@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A stock item in the mart",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the product"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional product details"
+        },
+        "price": {
+          "type": "number",
+          "description": "Unit price of the product"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Current stock level (buckets or kg)"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["bucket", "kg"],
+          "description": "The unit of measurement"
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category (e.g., Grocery, Beverage, etc.)"
+        },
+        "minStockLevel": {
+          "type": "integer",
+          "description": "Threshold for out-of-stock or low-stock alerts"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The UID of the mart owner who owns this product"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL of the product image"
+        },
+        "barcode": {
+          "type": "string",
+          "description": "Unique asset identifier"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["name", "price", "quantity", "ownerId", "updatedAt"]
+    },
+    "StockAdjustment": {
+      "title": "StockAdjustment",
+      "description": "A record of stock change",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "amount": { "type": "number" },
+        "unit": { "type": "string" },
+        "previousQuantity": { "type": "number" },
+        "newQuantity": { "type": "number" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "amount", "ownerId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of mart stock items"
+    },
+    "stock_logs/{logId}": {
+      "schema": "StockAdjustment",
+      "description": "History of stock adjustments"
+    }
+  }
+}

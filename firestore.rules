@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Validation Blueprints
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'quantity', 'ownerId', 'updatedAt', 'section', 'unit'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.quantity is number
+        && data.unit in ['bucket', 'kg', 'unit']
+        && data.section in ['Materials', 'Finish']
+        && data.ownerId == request.auth.uid
+        && data.updatedAt == request.time
+        && (data.get('category', '') is string)
+        && (data.get('description', '') is string)
+        && (data.get('barcode', '') is string)
+        && (data.get('minStockLevel', 0) is number)
+        && (data.get('imageUrl', '') is string);
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['productId', 'productName', 'amount', 'unit', 'previousQuantity', 'newQuantity', 'ownerId', 'createdAt', 'type'])
+        && data.amount is number
+        && data.unit in ['bucket', 'kg', 'unit']
+        && data.type in ['INTAKE', 'OUTTAKE']
+        && data.ownerId == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    match /products/{productId} {
+      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isOwner(incoming().ownerId));
+      allow list: if isSignedIn() && (resource == null || resource.data.ownerId == request.auth.uid);
+      
+      allow create: if isSignedIn() 
+        && isValidProduct(incoming())
+        && isValidId(productId);
+      
+      allow update: if isSignedIn()
+        && isOwner(existing().ownerId)
+        && isValidProduct(incoming())
+        && incoming().ownerId == existing().ownerId;
+        
+      allow delete: if isSignedIn() && isOwner(existing().ownerId);
+    }
+
+    match /stock_logs/{logId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidLog(incoming());
+      allow get, update, delete: if false;
+    }
+  }
+}
