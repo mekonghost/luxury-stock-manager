@@ -12,8 +12,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(ownerId) {
-      return isSignedIn() && request.auth.uid == ownerId;
+    function isStaff() {
+      return isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email.matches('(?i)stuff@luxurypaint\\.com') || 
+        request.auth.token.email.matches('(?i)staff@luxurypaint\\.com') || 
+        request.auth.token.email.matches('(?i)mekonghost@gmail\\.com') ||
+        request.auth.token.email.matches('(?i).*@luxury-paint\\.com')
+      );
+    }
+
+    function isCustomer() {
+      return isSignedIn() && request.auth.token.email != null && request.auth.token.email.matches('(?i)customer@luxurypaint\\.com');
     }
 
     function isValidId(id) {
@@ -28,51 +37,64 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isNumeric(val) {
+      return val is int || val is float;
+    }
+
     // 1. Validation Blueprints
     function isValidProduct(data) {
       return data.keys().hasAll(['name', 'quantity', 'ownerId', 'updatedAt', 'section', 'unit'])
         && data.name is string && data.name.size() > 0 && data.name.size() <= 100
-        && data.quantity is number
-        && data.unit in ['bucket', 'kg', 'unit']
+        && isNumeric(data.quantity)
+        && data.unit is string && data.unit.size() <= 50
         && data.section in ['Materials', 'Finish']
-        && data.ownerId == request.auth.uid
         && data.updatedAt == request.time
         && (data.get('category', '') is string)
-        && (data.get('description', '') is string)
+        && isNumeric(data.get('minStockLevel', 0))
+        && (data.get('grade', '') is string && data.get('grade', '').size() <= 100)
         && (data.get('barcode', '') is string)
-        && (data.get('minStockLevel', 0) is number)
-        && (data.get('imageUrl', '') is string);
+        && (data.get('description', '') is string)
+        && (data.get('availableSizes', []) is list)
+        && (data.get('availableBases', []) is list)
+        && (data.get('finishStocks', {}) is map);
     }
 
     function isValidLog(data) {
       return data.keys().hasAll(['productId', 'productName', 'amount', 'unit', 'previousQuantity', 'newQuantity', 'ownerId', 'createdAt', 'type'])
-        && data.amount is number
-        && data.unit in ['bucket', 'kg', 'unit']
+        && isNumeric(data.amount)
+        && data.unit is string && data.unit.size() <= 50
         && data.type in ['INTAKE', 'OUTTAKE']
-        && data.ownerId == request.auth.uid
-        && data.createdAt == request.time;
+        && data.createdAt == request.time
+        && (data.get('grade', '') is string && data.get('grade', '').size() <= 100)
+        && (data.get('size', '') is string && data.get('size', '').size() <= 100)
+        && (data.get('section', 'Materials') in ['Materials', 'Finish'])
+        && isNumeric(data.previousQuantity)
+        && isNumeric(data.newQuantity);
     }
 
     match /products/{productId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isOwner(incoming().ownerId));
-      allow list: if isSignedIn() && (resource == null || resource.data.ownerId == request.auth.uid);
+      allow read: if isSignedIn();
       
-      allow create: if isSignedIn() 
+      allow create: if isStaff() 
         && isValidProduct(incoming())
         && isValidId(productId);
       
-      allow update: if isSignedIn()
-        && isOwner(existing().ownerId)
-        && isValidProduct(incoming())
-        && incoming().ownerId == existing().ownerId;
+      allow update: if isStaff()
+        && isValidProduct(incoming());
         
-      allow delete: if isSignedIn() && isOwner(existing().ownerId);
+      allow delete: if isStaff();
     }
 
     match /stock_logs/{logId} {
-      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow create: if isSignedIn() && isValidLog(incoming());
-      allow get, update, delete: if false;
+      allow list, get: if isSignedIn();
+      allow create: if isStaff() && isValidLog(incoming());
+      allow update, delete: if false;
+    }
+
+    match /user_permissions_config/{userEmail} {
+      allow get: if true;
+      allow list: if isSignedIn();
+      allow write: if isStaff();
     }
   }
 }

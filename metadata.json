@@ -1,6 +1,6 @@
 {
   "name": "Inventory OS: Midnight",
   "description": "High-performance vertical inventory management system with real-time stock auditing and midnight aesthetics.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

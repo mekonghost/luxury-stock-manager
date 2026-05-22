@@ -5,12 +5,61 @@ import { GoogleGenAI, Type } from "@google/genai";
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import { initializeApp as initAdmin, getApps as getAdminApps, getApp as getAdminApp } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 
 dotenv.config();
+
+import { initializeApp as initClientApp } from 'firebase/app';
+import { getAuth as getClientAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { initializeFirestore as initClientFirestore, collection as getClientCollection, getDocs as getClientDocs } from 'firebase/firestore';
+
+let clientDb: any = null;
+let clientAuth: any = null;
+
+async function getAuthenticatedClientDb(): Promise<any> {
+  if (!clientDb) {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    const fbConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    
+    // Create an isolated subapp instance for the server connection
+    const clientApp = initClientApp(fbConfig, 'server-client-twin-app');
+    clientDb = initClientFirestore(clientApp, {}, fbConfig.firestoreDatabaseId);
+    clientAuth = getClientAuth(clientApp);
+  }
+
+  // Session check & login
+  if (!clientAuth.currentUser) {
+    await signInWithEmailAndPassword(clientAuth, 'chhayheng@luxury-paint.com', 'Heng@1188');
+  }
+  
+  return clientDb;
+}
+
+async function fetchProductsUsingClientSdk(): Promise<any[]> {
+  const db = await getAuthenticatedClientDb();
+  const querySnapshot = await getClientDocs(getClientCollection(db, 'products'));
+  const products: any[] = [];
+  querySnapshot.forEach((doc) => {
+    products.push({
+      id: doc.id,
+      ...doc.data()
+    });
+  });
+  return products;
+}
+
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  const adminApp = getAdminApps().length === 0 
+    ? initAdmin({ projectId: 'gen-lang-client-0253215829' })
+    : getAdminApp();
+
+  const adminDb = getAdminFirestore(adminApp, 'ai-studio-a65f6775-0d0a-459f-87b5-f45c268cba45');
 
   const storage = multer.memoryStorage();
   const upload = multer({ 
@@ -148,6 +197,99 @@ async function startServer() {
     } catch (error: any) {
       console.error('Parsing error:', error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/external/products - endpoint for order website to see product and stocks
+  app.options('/api/external/products', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+    res.status(200).end();
+  });
+
+  app.get('/api/external/products', async (req, res) => {
+    // Enable CORS for external website integrations
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+
+    try {
+      const configuredApiKey = process.env.LUXURY_PAINT_API_KEY || 'luxury-paint-stock-sharing-key-2026-xyz';
+      
+      // Look for the API key in query parameters, bearer token, or custom header
+      let providedKey = req.query.apiKey || req.query.api_key;
+      if (!providedKey) {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+          providedKey = authHeader.substring(7);
+        } else {
+          providedKey = req.headers['x-api-key'] || req.headers['X-API-Key'];
+        }
+      }
+
+      if (!providedKey || providedKey !== configuredApiKey) {
+        return res.status(401).json({ 
+          success: false,
+          error: 'Unauthorized', 
+          message: 'Invalid or missing API key. Please retrieve your correct key from your account chhayheng@luxury-paint.com' 
+        });
+      }
+
+      // Query database for all products
+      const rawProducts = await fetchProductsUsingClientSdk();
+      const products = rawProducts.map(data => {
+        let updatedAtISO = null;
+        if (data.updatedAt) {
+          if (typeof data.updatedAt === 'string') {
+            updatedAtISO = data.updatedAt;
+          } else if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+            updatedAtISO = data.updatedAt.toDate().toISOString();
+          } else if (data.updatedAt && data.updatedAt._seconds) {
+            updatedAtISO = new Date(data.updatedAt._seconds * 1000).toISOString();
+          }
+        }
+
+        return {
+          id: data.id,
+          name: data.name || '',
+          description: data.description || '',
+          quantity: data.quantity !== undefined ? data.quantity : 0,
+          unit: data.unit || 'unit',
+          category: data.category || 'General',
+          section: data.section || 'Materials',
+          grade: data.grade || null,
+          availableSizes: data.availableSizes || [],
+          availableBases: data.availableBases || [],
+          finishStocks: data.finishStocks || {},
+          minStockLevel: data.minStockLevel || 0,
+          barcode: data.barcode || '',
+          photoUrl: data.photoUrl || '',
+          updatedAt: updatedAtISO
+        };
+      });
+
+      // Filter strictly by "Finish" section (Materials are NOT allowed on this API)
+      let filteredProducts = products.filter(p => p.section && p.section.toLowerCase() === 'finish');
+      
+      // Filter by category if specified
+      if (req.query.category) {
+        const cat = String(req.query.category).toLowerCase();
+        filteredProducts = filteredProducts.filter(p => p.category && p.category.toLowerCase() === cat);
+      }
+
+      res.json({
+        success: true,
+        count: filteredProducts.length,
+        products: filteredProducts
+      });
+    } catch (err: any) {
+      console.error('Error in external products API:', err);
+      res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: err.message
+      });
     }
   });
 

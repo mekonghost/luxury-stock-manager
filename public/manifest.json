@@ -1,0 +1,30 @@
+{
+  "name": "Luxury Paint Stock Tracker",
+  "short_name": "Luxury Paint",
+  "description": "Stock and Inventory Tracker for Luxury Paint Products and Raw Materials",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090d16",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "https://i.imgur.com/MUGtlwi.jpeg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.imgur.com/MUGtlwi.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.imgur.com/MUGtlwi.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
